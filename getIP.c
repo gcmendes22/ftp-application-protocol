@@ -3,7 +3,7 @@
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <string.h>
 /*
 struct hostent {
     char *h_name;        // Official name of the host.
@@ -36,6 +36,7 @@ int main(int argc, char *argv[])
 
     printf("Host name  : %s\n", h->h_name);
     printf("IP Address : %s\n", inet_ntoa(*((struct in_addr *)h->h_addr)));
-
-    return 0;
+    char* ip;
+    strcpy(ip, inet_ntoa(*((struct in_addr *)h->h_addr)));
+    return 0;   
 }

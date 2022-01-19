@@ -3,6 +3,8 @@
     "*.env.development": "env",
     "*.env.production": "env",
     "*.env.local": "env",
-    "types.h": "c"
+    "types.h": "c",
+    "stdlib.h": "c",
+    "socket.h": "c"
   }
 }
