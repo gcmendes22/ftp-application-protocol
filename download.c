@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -38,7 +39,11 @@ struct url_t* url;
 struct ftp_t* ftp;
 
 /* REGEX for URL parsing */
-const char* URL_REGEX = "^ftp://(([a-zA-Z][^:]*):([^@]+)@)?(([a-z0-9:]+[.]?)+)/(([^/]+[/])*)([^/]+)$";
+const char* REGEX_AUTH = "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
+
+const char* REGEX_ANON = "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
+
+#define URL_REGEX "^ftp://(([a-zA-Z][^:]*):([^@]+)@)?(([a-z0-9:]+[.]?)+)/(([^/]+[/])*)([^/]+)$"
 
 int url_init(struct url_t* url);
 
@@ -96,14 +101,14 @@ int main(int argc, char* argv[]) {
 
   /* Printing URL parameters */
   url_print(url);
-
+  
   /* Opening socket connection */
   ftp->socket_fd = ftp_open_connection();
   if(ftp->socket_fd == ERROR) {
     printf("Error: Cannot open FTP conection.\n");
     return ERROR;
   }
-
+printf("\nOK\n");
   /* Login into user account */
   int login_response = ftp_authenticate();
   
@@ -180,28 +185,22 @@ int url_init(struct url_t* url) {
 }
 
 int url_parse(struct url_t* url, char* input) {
-  regex_t* regex;
-  int is_compiled;
-
-  /* Compile regular expression */
-  if((is_compiled = regcomp(regex, URL_REGEX, REG_EXTENDED | REG_NEWLINE)) != 0) {
-    printf("Error: Cannot compile regex expression.\n");
-    return ERROR;
-  }
 
   /* provisory */
-  strcpy(url->user, strlen("root") == 0 ? "root" : "none");
-  strcpy(url->password, strlen("none") == 0 ? "none" : "none");
-  strcpy(url->host, "192.168.86.23");
-  strcpy(url->filename, "file");
-  strcpy(url->path, "pathname");
+  // ftp://ftp.up.pt/pub/CPAN/RECENT-1M.json
+  strcpy(url->user, strlen("") == 0 ? "anonymous" : "root");
+  strcpy(url->password, strlen("") == 0 ? "a" : "none");
+  strcpy(url->host, "ftp.up.pt");
+  strcpy(url->filename, "RECENT-1M.json");
+  strcpy(url->path, "pub/CPAN/");
 
-  url_set_ip_char(url_get_ip());
+  url_set_ip_char(url_get_ip()); 
 
   return TRUE;
 }
 
 void url_print(struct url_t* url) {
+
   printf("URL connection parameters:\n\n");
   printf("IP: %s\n", url->ip);
   printf("User: %s\n", url->user);
