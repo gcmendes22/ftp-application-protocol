@@ -90,12 +90,15 @@ int main(int argc, char* argv[]) {
   char input[BUFSIZE];
   memcpy(input, argv[1], BUFSIZE);
 
+  ftp = malloc(sizeof(struct ftp_t));
+
   /* Initializing URL connection parameters */
   url = malloc(sizeof(struct url_t));
   if(url_init(url) == ERROR) {
     printf("Error: Cannot initialize connection parameters. Url passed in parameter cannot be null.\n");
     return ERROR;
   }
+  
   /* Parsing URL provided to URL settings parameters */
   url_parse(url, input);
 
@@ -105,68 +108,75 @@ int main(int argc, char* argv[]) {
   /* Opening socket connection */
   ftp->socket_fd = ftp_open_connection();
   if(ftp->socket_fd == ERROR) {
-    printf("Error: Cannot open FTP conection.\n");
+    printf("[-] Error: Cannot open FTP conection.\n");
     return ERROR;
   }
-printf("\nOK\n");
+  printf("[+] Opened connection successfuly.\n");
+  
   /* Login into user account */
   int login_response = ftp_authenticate();
   
   if(login_response == ERROR) {
-    printf("Error: Cannot login into your account.\n");
+    printf("[-] Error: Cannot login into your account.\n");
     return ERROR;
   }
 
   if(login_response == FALSE) {
-    printf("Error: Username or password are incorrect.\n");
+    printf("[-] Error: Username or password are incorrect.\n");
     return ERROR;
   }
-
-  /* Change to respective directory passed in URL */
-  int cwd_response = ftp_change_directory(ftp->socket_fd, url->path);
-  if(cwd_response == ERROR) {
-    printf("Error: Cannot switch to the respective directory %s/%s.\n", url->path, url->filename);
-    return ERROR;
-  }
-
+  printf("[+] Login was successful.\n");
+   
   /* Get in passive mode */
   int pasv_response = ftp_switch_passive_mode();
   if(pasv_response == ERROR) {
-    printf("Error: Cannot switch to passive mode.\n");
+    printf("[-] Error: Cannot switch to passive mode.\n");
     return ERROR;
   }
+  printf("[+] Switched to passive mode\n");
 
   /* Reconnecting, but this time with passive mode */
   ftp->data_fd = ftp_open_connection();
   if(ftp->socket_fd == ERROR) {
-    printf("Error: Cannot open the data connection.\n");
+    printf("[-] Error: Cannot open the data connection.\n");
     return ERROR;
   }
+  printf("[+] Opened data connection.\n");
+
+  /* Change to respective directory passed in URL */
+  int cwd_response = ftp_change_directory(ftp->socket_fd, url->path);
+
+  if(cwd_response == ERROR) {
+    printf("[-] Error: Cannot switch to the respective directory %s/%s.\n", url->path, url->filename);
+    return ERROR;
+  }
+  printf("[+] Switched to the respective directory.\n");
 
   /* Retrieve a copy of the file */
   int retr_response = ftp_retrieve_file();
   if(retr_response == ERROR) {
-    printf("Error: Cannot retrieve a copy of the file.\n");
+    printf("[-] Error: Cannot retrieve a copy of the file.\n");
     return ERROR;
   }
+  printf("[+] File was retrived.\n");
   
   /* Download file */
-  printf("Downloading...\n");
+  printf("[+] Downloading...\n");
   int download_response = ftp_download_file();
   if(download_response == ERROR) {
-    printf("Error: Cannot retrieve a copy of the file.\n");
+    printf("[-] Error: Cannot download the file.\n");
     return ERROR;
   }
-  printf("The download was successful.\n");
+  printf("[+] The download was successful.\n");
 
   /* Cleaning all structures and disconnecting from server */
   ftp_disconnect();
   int disc_response = ftp_disconnect();
   if(disc_response == ERROR) {
-    printf("Error: Cannot disconnect from the server with success.\n");
+    printf("[-] Error: Cannot disconnect from the server with success.\n");
     return ERROR;
   }
-  
+  printf("[+] Leaving program...\n");
   return TRUE;
 }
 
@@ -188,11 +198,11 @@ int url_parse(struct url_t* url, char* input) {
 
   /* provisory */
   // ftp://ftp.up.pt/pub/CPAN/RECENT-1M.json
-  strcpy(url->user, strlen("") == 0 ? "anonymous" : "root");
-  strcpy(url->password, strlen("") == 0 ? "a" : "none");
+  strcpy(url->user, "anonymous");
+  strcpy(url->password, "a");
   strcpy(url->host, "ftp.up.pt");
-  strcpy(url->filename, "RECENT-1M.json");
-  strcpy(url->path, "pub/CPAN/");
+  strcpy(url->filename, "timestamp");
+  strcpy(url->path, "pub/CTAN/");
 
   url_set_ip_char(url_get_ip()); 
 
@@ -235,7 +245,8 @@ int url_set_ip_char(char* ip) {
 
 int url_set_port(int* port) {
   if(port == NULL) return ERROR;
-  url->port = port[0] * 256 + port[1];
+  url->port = (port[0] * 256) + port[1];
+  printf("%d %d\n", port[0], port[1]);
   return TRUE;
 }
 
@@ -254,21 +265,23 @@ int ftp_read_command_response(char* command) {
 
   /* Reset the actual command and store it with the response of the command on the server */
   do {
+    //printf("%s", command);
     memset(command, 0, length);
     command = fgets(command, length, fp);
-  } while((command[0] >= '1' && command[0] <= '5') || command[3] != ' ');
+  } while(!(command[0] >= '1' && command[0] <= '5') || command[3] != ' ');
 
   return TRUE;
 }
 
 int ftp_open_connection() {
     struct sockaddr_in server_addr;
-
+    printf("IP: %s\n", url->ip);
+    printf("port: %d\n", url->port);
     bzero((char*)&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(url->ip);  // 32 bit Internet address network byte ordered
     server_addr.sin_port = htons(url->port);  // Server TCP port must be network byte ordered
-
+    
     // Open a TCP socket
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -323,7 +336,7 @@ int ftp_authenticate() {
 int ftp_change_directory() {
   char cwd_command[BUFSIZE];
   int bytes_sent, bytes_read;
-
+ 
   /* Creating command CWD <pathname> */
   sprintf(cwd_command, "CWD %s\r\n", url->path);
 
@@ -332,11 +345,11 @@ int ftp_change_directory() {
     printf("Error: Cannot send the command %s.\n", cwd_command);
     return ERROR;
   }
-
+    printf("%d\n", bytes_sent);
   /* Get the response of the command sent to the FTP server */
   if((bytes_read = ftp_read_command_response(cwd_command)) == ERROR)
     return ERROR;
-  
+
   return TRUE;
 }
 
@@ -344,22 +357,23 @@ int ftp_switch_passive_mode() {
   char pasv_command[BUFSIZE] = "PASV\r\n";
   int bytes_sent, bytes_read;
   int ip[4];
-  int port[23];
+  int port[2];
 
   /* Send the command to the FTP server */
-  if((bytes_sent = ftp_send_command(pasv_command)) == ERROR) {
-    printf("Error: Cannot send the command %s.\n", pasv_command);
+  if((bytes_sent = ftp_send_command(pasv_command)) == ERROR)
     return ERROR;
-  }
 
   /* Get the response of the command sent to the FTP server */
   if((bytes_read = ftp_read_command_response(pasv_command)) == ERROR)
     return ERROR;
-  
-  /* Passing the response to the buffer */
-  sscanf(pasv_command, "227 Entering Passive Mode (%d, %d, %d, %d, %d, %d)", &ip[0], &ip[1], &ip[2], &ip[3], &port[0], &port[1]);
 
+  /* Passing the response to the buffer */
+  
+  sscanf(pasv_command, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", &ip[0], &ip[1], &ip[2], &ip[3], &port[0], &port[1]);
+  printf("Entering in Passive Mode (%d, %d, %d, %d, %d, %d).\n", ip[0], ip[1], ip[2], ip[3], port[0], port[1]);
   /* Setting new IP and PORT into connection settings */
+  memset(pasv_command, 0, sizeof(pasv_command));
+
   url_set_ip_int(ip);
   url_set_port(port);
 
@@ -380,20 +394,31 @@ int ftp_retrieve_file() {
   }
 
   /* Get the response of the command sent to the FTP server */
-  if((bytes_read = ftp_read_command_response(retr_command)) == ERROR)
-    return ERROR;
+  if((bytes_read = ftp_read_command_response(retr_command)) == ERROR) {
+    
+     return ERROR;
+  }
+   
   
   return TRUE;
 }
 
 int ftp_download_file() {
   FILE* fp;
+  char buf[MAXLEN];
+  int bytes_read;
 
   /* Create new file to copy the file on the server */
-  if(fopen(url->filename, "w") == NULL) return ERROR;
+  if((fp = fopen(url->filename, "w")) == NULL) {
+    printf("Error: Cannot opening file\n");
+    return ERROR;
+  }
 
-  fp = ftp_copy_file();
-  if(!fp) return ERROR;
+  while((bytes_read = read(ftp->data_fd, buf, MAXLEN)) != 0) {
+    printf("%d", bytes_read);
+    if (bytes_read < 0) return ERROR;
+    if((bytes_read = fwrite(buf, bytes_read, 1, fp)) < 0) return ERROR;
+  }
 
   fclose(fp);
 
