@@ -62,20 +62,39 @@ int set_pathname(char* offset_string, char* string);
 
 /* URL and FTP functions */
 
+// @brief Alloc default values to URL fields
+// @param url URL struct to initialize
+// @return int: TRUE if success, ERROR if error
 int url_init(struct url_t* url);
 
-int url_parse(struct url_t* url, char* input);
+// @brief Parse URL passed as parameter to URL settings
+// @param input URL in string form
+// @return int: TRUE if success, ERROR if error
+int url_parse(char* input);
 
-void url_print(struct url_t* url);
+// @brief Print URL settings
+// @return void
+void url_print();
 
+// @brief Get IP based on hostname
+// @return char*: IP if success, NULL if error
 char* url_get_ip();
 
+// @brief Set an array of ints into a URL IP
+// @param ip IP in array of ints
+// @return TRUE if success, ERROR if error
 int url_set_ip_int(int* ip);
 
+// @brief Set a string (ip format) into a URL IP
+// @return TRUE if success, ERROR if error
 int url_set_ip_char(char* ip);
 
+// @brief Convert to PORT and set into URL settings
+// @return TRUE if success, ERROR if error
 int url_set_port(int* port);
 
+// @brief Send commands to FTP server
+// @return TRUE if success, ERROR if error 
 int ftp_send_command(char* command);
 
 int ftp_read_command_response(char* command);
@@ -117,7 +136,7 @@ int main(int argc, char* argv[]) {
   }
   
   /* Parsing URL provided to URL settings parameters */
-  url_parse(url, input);
+  url_parse(input);
 
   /* Printing URL parameters */
   url_print(url);
@@ -130,20 +149,11 @@ int main(int argc, char* argv[]) {
   }
   printf("[+] Opened connection successfuly.\n");
 
-  const char* user = strlen(url->user) ? url->user : "anonymous";
+  char* user = strlen(url->user) != 0 ? url->user : "anonymous";
+  char* password = strlen(url->password) != 0 ? url->password : "anon";
+  strcpy(url->user, user);
+  strcpy(url->password, password);
 
-  char* password;
-	if (strlen(url->password)) {
-		password = url->password;
-	} else {
-		char buf[100];
-		printf("You are now entering in anonymous mode.\n");
-		printf("Please insert your college email as password: ");
-		while (strlen(fgets(buf, 100, stdin)) < 14)
-			printf("\nIncorrect input, please try again: ");
-		password = (char*) malloc(strlen(buf));
-		strncat(password, buf, strlen(buf) - 1);
-	}
   url_print(url);
   /* Login into user account */
   int login_response = ftp_authenticate();
@@ -298,7 +308,7 @@ int url_init(struct url_t* url) {
   return TRUE;
 }
 
-int url_parse(struct url_t* url, char* input) {
+int url_parse(char* input) {
   char* aux_url_string, *offset_string, *active_expression;
   regex_t* regex;
   int user_pass_mode;
@@ -341,7 +351,7 @@ int url_parse(struct url_t* url, char* input) {
   return TRUE;
 }
 
-void url_print(struct url_t* url) {
+void url_print() {
 
   printf("URL connection parameters:\n\n");
   printf("IP: %s\n", url->ip);
