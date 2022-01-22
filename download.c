@@ -115,6 +115,8 @@ FILE* ftp_copy_file();
 
 int ftp_disconnect();
 
+void delay(int number_of_seconds);
+
 int main(int argc, char* argv[]) {
   /* Bad program arguments */
   if(argc != 2) {
@@ -219,6 +221,19 @@ int main(int argc, char* argv[]) {
   }
   printf("[+] Leaving program...\n");
   return TRUE;
+}
+
+void delay(int number_of_seconds)
+{
+    // Converting time into milli_seconds
+    int milli_seconds = 1000 * number_of_seconds;
+  
+    // Storing start time
+    clock_t start_time = clock();
+  
+    // looping till required time is not achieved
+    while (clock() < start_time + milli_seconds)
+        ;
 }
 
 char* substring_char(char* string, char ch) {
@@ -400,7 +415,9 @@ int ftp_send_command(char* command) {
 
 int ftp_read_command_response(char* command) {
   int length = strlen(command);
+  delay(2000);
   FILE* fp;
+
   
   if(((fp = fdopen(ftp->socket_fd, "r")) < 0)) return ERROR;
 
