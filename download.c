@@ -39,11 +39,28 @@ struct url_t* url;
 struct ftp_t* ftp;
 
 /* REGEX for URL parsing */
-const char* REGEX_AUTH = "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
+#define REGEX_AUTH "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
 
-const char* REGEX_ANON = "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
+#define REGEX_NO_AUTH "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
 
-#define URL_REGEX "^ftp://(([a-zA-Z][^:]*):([^@]+)@)?(([a-z0-9:]+[.]?)+)/(([^/]+[/])*)([^/]+)$"
+
+/* Auxiliar functions */
+
+char* substring_char(char* string, char ch);
+
+int is_auth_mode(char* input);
+
+int string_match_regex(regex_t* regex, char* regex_expression, char* string, int length);
+
+int set_username(char* offset_string, char* string);
+
+int set_password(char* offset_string, char* string);
+
+int set_hostname(char* offset_string, char* string);
+
+int set_pathname(char* offset_string, char* string);
+
+/* URL and FTP functions */
 
 int url_init(struct url_t* url);
 
@@ -112,7 +129,22 @@ int main(int argc, char* argv[]) {
     return ERROR;
   }
   printf("[+] Opened connection successfuly.\n");
-  
+
+  const char* user = strlen(url->user) ? url->user : "anonymous";
+
+  char* password;
+	if (strlen(url->password)) {
+		password = url->password;
+	} else {
+		char buf[100];
+		printf("You are now entering in anonymous mode.\n");
+		printf("Please insert your college email as password: ");
+		while (strlen(fgets(buf, 100, stdin)) < 14)
+			printf("\nIncorrect input, please try again: ");
+		password = (char*) malloc(strlen(buf));
+		strncat(password, buf, strlen(buf) - 1);
+	}
+  url_print(url);
   /* Login into user account */
   int login_response = ftp_authenticate();
   
@@ -144,7 +176,7 @@ int main(int argc, char* argv[]) {
   printf("[+] Opened data connection.\n");
 
   /* Change to respective directory passed in URL */
-  int cwd_response = ftp_change_directory(ftp->socket_fd, url->path);
+  int cwd_response = ftp_change_directory();
 
   if(cwd_response == ERROR) {
     printf("[-] Error: Cannot switch to the respective directory %s/%s.\n", url->path, url->filename);
@@ -180,6 +212,78 @@ int main(int argc, char* argv[]) {
   return TRUE;
 }
 
+char* substring_char(char* string, char ch) {
+	char* substring = (char*) malloc(strlen(string));
+
+	int length = strlen(string) - strlen(strcpy(substring, strchr(string, ch)));
+
+	substring[length] = '\0';
+	strncpy(substring, string, length);
+	strcpy(string, string + strlen(substring) + 1);
+
+	return substring;
+}
+
+int is_auth_mode(char* input) {
+    return input[6] == '[' ? TRUE : FALSE;
+}
+
+int string_match_regex(regex_t* regex, char* regex_expression, char* string, int length) {
+  int status;
+  size_t nmatch = length;
+  regmatch_t pmatch[nmatch];
+  
+  if((status = regcomp(regex, regex_expression, REG_EXTENDED)) != 0) return ERROR;
+  if((status = regexec(regex, string, nmatch, pmatch, REG_EXTENDED)) != 0) return ERROR;
+
+  return TRUE;
+}
+
+int set_username(char* offset_string, char* string) {
+  if(offset_string == NULL || string == NULL) return ERROR;
+  
+  strcpy(string, string + 1);
+  strcpy(offset_string, substring_char(string, ':'));
+  memcpy(url->user, offset_string, strlen(offset_string));
+  return TRUE;
+}
+
+int set_password(char* offset_string, char* string) {
+  if(offset_string == NULL || string == NULL) return ERROR;
+
+  strcpy(offset_string, substring_char(string, '@'));
+  memcpy(url->password, offset_string, strlen(offset_string));
+  strcpy(string, string + 1);
+  return TRUE;
+}
+
+int set_hostname(char* offset_string, char* string) {
+  if(offset_string == NULL || string == NULL) return ERROR;
+  
+  strcpy(offset_string, substring_char(string, '/'));
+	memcpy(url->host, offset_string, strlen(offset_string));
+  return TRUE;
+}
+
+int set_pathname(char* offset_string, char* string) {
+  if(offset_string == NULL || string == NULL) return ERROR;
+
+  char* pathname = (char*) malloc(strlen(string));
+  int path_begin = 1;
+  while (strchr(string, '/')) {
+    offset_string = substring_char(string, '/');
+
+    if (path_begin) {
+      path_begin = 0;
+      strcpy(pathname, offset_string);
+    } else strcat(pathname, offset_string);
+
+    strcat(pathname, "/");
+  }
+  strcpy(url->path, pathname);
+  return TRUE;
+}
+
 int url_init(struct url_t* url) {
   if(url == NULL) return ERROR;
 
@@ -195,14 +299,42 @@ int url_init(struct url_t* url) {
 }
 
 int url_parse(struct url_t* url, char* input) {
+  char* aux_url_string, *offset_string, *active_expression;
+  regex_t* regex;
+  int user_pass_mode;
 
-  /* provisory */
-  // ftp://ftp.up.pt/pub/CPAN/RECENT-1M.json
-  strcpy(url->user, "anonymous");
-  strcpy(url->password, "a");
-  strcpy(url->host, "ftp.up.pt");
-  strcpy(url->filename, "timestamp");
-  strcpy(url->path, "pub/CTAN/");
+  offset_string = (char*) malloc(strlen(input));
+  aux_url_string = (char*) malloc(strlen(input));
+
+  memcpy(aux_url_string, input, strlen(input));
+
+  if(is_auth_mode(input) == TRUE) {
+    active_expression = (char*) REGEX_AUTH;
+  } else {
+    active_expression = (char*) REGEX_NO_AUTH;
+  }
+
+  regex = (regex_t*) malloc(sizeof(regex_t));
+
+  if(string_match_regex(regex, active_expression, aux_url_string, strlen(input)) == ERROR) return ERROR;
+
+  free(regex);
+
+  strcpy(aux_url_string, aux_url_string + 6);
+
+  if (is_auth_mode(input) == TRUE) {
+    set_username(offset_string, aux_url_string);
+    set_password(offset_string, aux_url_string);
+  }
+
+  set_hostname(offset_string, aux_url_string);
+
+  set_pathname(offset_string, aux_url_string);
+
+  strcpy(url->filename, aux_url_string);
+
+  free(aux_url_string);
+  free(offset_string);
 
   url_set_ip_char(url_get_ip()); 
 
@@ -368,7 +500,7 @@ int ftp_switch_passive_mode() {
     return ERROR;
 
   /* Passing the response to the buffer */
-  
+  printf("PASV: %s\n", pasv_command);
   sscanf(pasv_command, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", &ip[0], &ip[1], &ip[2], &ip[3], &port[0], &port[1]);
   printf("Entering in Passive Mode (%d, %d, %d, %d, %d, %d).\n", ip[0], ip[1], ip[2], ip[3], port[0], port[1]);
   /* Setting new IP and PORT into connection settings */
@@ -452,7 +584,7 @@ int ftp_disconnect() {
     return ERROR;
   
   close(ftp->data_fd);
-  close(ftp->data_fd);
+  close(ftp->socket_fd);
   free(url);
   free(ftp);
 
