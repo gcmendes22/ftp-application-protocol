@@ -394,7 +394,7 @@ int url_set_port(int* port) {
 int ftp_send_command(char* command) {
   int status;
   if((status = write(ftp->socket_fd, command, strlen(command))) <= 0) return ERROR;
-
+  
   return status;
 }
 
@@ -409,15 +409,13 @@ int ftp_read_command_response(char* command) {
     memset(command, 0, length);
     command = fgets(command, BUFSIZE, fp);
     printf("%s", command);
-  } while(!(command[0] >= '1' && command[0] <= '5') || command[3] != ' ');
+  } while(!(command[0] >= '1' && command[0] <= '5'));
 
   return TRUE;
 }
 
 int ftp_open_connection() {
     struct sockaddr_in server_addr;
-    printf("IP: %s\n", url->ip);
-    printf("port: %d\n", url->port);
     bzero((char*)&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(url->ip);  // 32 bit Internet address network byte ordered
@@ -510,8 +508,9 @@ int ftp_switch_passive_mode() {
 
   /* Passing the response to the buffer */
   printf("PASV: %s\n", pasv_command);
+    printf("PORT: %d\n", url->port);
   sscanf(pasv_command, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", &ip[0], &ip[1], &ip[2], &ip[3], &port[0], &port[1]);
-  printf("Entering in Passive Mode (%d, %d, %d, %d, %d, %d).\n", ip[0], ip[1], ip[2], ip[3], port[0], port[1]);
+  //printf("Entering in Passive Mode (%d, %d, %d, %d, %d, %d).\n", ip[0], ip[1], ip[2], ip[3], port[0], port[1]);
   /* Setting new IP and PORT into connection settings */
   memset(pasv_command, 0, sizeof(pasv_command));
 
