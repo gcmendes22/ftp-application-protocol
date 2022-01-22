@@ -138,9 +138,6 @@ int main(int argc, char* argv[]) {
   /* Parsing URL provided to URL settings parameters */
   url_parse(input);
 
-  /* Printing URL parameters */
-  url_print(url);
-  
   /* Opening socket connection */
   ftp->socket_fd = ftp_open_connection();
   if(ftp->socket_fd == ERROR) {
@@ -153,8 +150,10 @@ int main(int argc, char* argv[]) {
   char* password = strlen(url->password) != 0 ? url->password : "anon";
   strcpy(url->user, user);
   strcpy(url->password, password);
-
+  
+  /* Printing URL parameters */
   url_print(url);
+  
   /* Login into user account */
   int login_response = ftp_authenticate();
   
@@ -168,7 +167,7 @@ int main(int argc, char* argv[]) {
     return ERROR;
   }
   printf("[+] Login was successful.\n");
-   
+
   /* Get in passive mode */
   int pasv_response = ftp_switch_passive_mode();
   if(pasv_response == ERROR) {
@@ -176,7 +175,7 @@ int main(int argc, char* argv[]) {
     return ERROR;
   }
   printf("[+] Switched to passive mode\n");
-
+   
   /* Reconnecting, but this time with passive mode */
   ftp->data_fd = ftp_open_connection();
   if(ftp->socket_fd == ERROR) {
@@ -407,9 +406,9 @@ int ftp_read_command_response(char* command) {
 
   /* Reset the actual command and store it with the response of the command on the server */
   do {
-    //printf("%s", command);
     memset(command, 0, length);
-    command = fgets(command, length, fp);
+    command = fgets(command, BUFSIZE, fp);
+    printf("%s", command);
   } while(!(command[0] >= '1' && command[0] <= '5') || command[3] != ' ');
 
   return TRUE;
@@ -460,7 +459,7 @@ int ftp_authenticate() {
     return FALSE;
 
   /* Creating command PASS <password> */
-  sprintf(user_command, "PASS %s\r\n", url->password);
+  sprintf(password_command, "PASS %s\r\n", url->password);
 
   /* Send the command to the FTP server */
   if((bytes_sent = ftp_send_command(password_command)) == ERROR) {
@@ -557,7 +556,6 @@ int ftp_download_file() {
   }
 
   while((bytes_read = read(ftp->data_fd, buf, MAXLEN)) != 0) {
-    printf("%d", bytes_read);
     if (bytes_read < 0) return ERROR;
     if((bytes_read = fwrite(buf, bytes_read, 1, fp)) < 0) return ERROR;
   }
