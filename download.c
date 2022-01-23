@@ -39,8 +39,8 @@ struct url_t* url;
 struct ftp_t* ftp;
 
 /* REGEX for URL parsing */
-#define REGEX_AUTH "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
-#define REGEX_NO_AUTH "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
+#define REGEX_AUTH "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+"; // with authentication (User and Password)
+#define REGEX_NO_AUTH "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+"; // without authentication (anonymous mode) 
 
 /* Auxiliar functions */
 
