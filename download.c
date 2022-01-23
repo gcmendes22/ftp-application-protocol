@@ -28,8 +28,8 @@ struct url_t {
 };
 
 struct ftp_t {
-  int socket_fd;
-  int data_fd;
+  int socket_fd; // file descriptor to deal with FTP server communication
+  int data_fd; // file descriptor to deal with the downloaded file
 };
   
 /* Variable to store URL parameters */
@@ -40,9 +40,7 @@ struct ftp_t* ftp;
 
 /* REGEX for URL parsing */
 #define REGEX_AUTH "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
-
 #define REGEX_NO_AUTH "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+";
-
 
 /* Auxiliar functions */
 
@@ -59,6 +57,7 @@ int set_password(char* offset_string, char* string);
 int set_hostname(char* offset_string, char* string);
 
 int set_pathname(char* offset_string, char* string);
+
 
 /* URL and FTP functions */
 
@@ -86,33 +85,51 @@ char* url_get_ip();
 int url_set_ip_int(int* ip);
 
 // @brief Set a string (ip format) into a URL IP
+// @param ip IP in string form
 // @return TRUE if success, ERROR if error
 int url_set_ip_char(char* ip);
 
 // @brief Convert to PORT and set into URL settings
+// @param port PORT in array of two ints
 // @return TRUE if success, ERROR if error
 int url_set_port(int* port);
 
 // @brief Send commands to FTP server
+// @param command Command string to send
 // @return TRUE if success, ERROR if error 
 int ftp_send_command(char* command);
 
+// @brief Read response from command in FTP server
+// @param command Command string to to obtain the response
+// @return TRUE if success, ERROR if error 
 int ftp_read_command_response(char* command);
 
+// @brief Open FTP connection
+// @return TRUE if success, ERROR if error 
 int ftp_open_connection();
 
+// @brief Authenticate USER and PASS in the FTP Server
+// @return TRUE if success, ERROR if error 
 int ftp_authenticate();
 
+// @brief Change to the respective directory in the FTP server
+// @return TRUE if success, ERROR if error 
 int ftp_change_directory();
 
+// @brief Switch to the passive mode
+// @return TRUE if success, ERROR if error 
 int ftp_switch_passive_mode();
 
+// @brief Retrieve the respective file
+// @return TRUE if success, ERROR if error 
 int ftp_retrieve_file();
 
+// @brief Download the respective file. (copy the file to another one on the root of the FTP application)
+// @return TRUE if success, ERROR if error 
 int ftp_download_file();
 
-FILE* ftp_copy_file();
-
+// @brief Disconnect from the FTP Server
+// @return TRUE if success, ERROR if error 
 int ftp_disconnect();
 
 int main(int argc, char* argv[]) {
@@ -138,6 +155,10 @@ int main(int argc, char* argv[]) {
   /* Parsing URL provided to URL settings parameters */
   url_parse(input);
 
+  /* Printing URL parameters */
+  url_print(url);
+  
+
   /* Opening socket connection */
   ftp->socket_fd = ftp_open_connection();
   if(ftp->socket_fd == ERROR) {
@@ -150,9 +171,6 @@ int main(int argc, char* argv[]) {
   char* password = strlen(url->password) != 0 ? url->password : "anon";
   strcpy(url->user, user);
   strcpy(url->password, password);
-  
-  /* Printing URL parameters */
-  url_print(url);
   
   /* Login into user account */
   int login_response = ftp_authenticate();
@@ -174,7 +192,7 @@ int main(int argc, char* argv[]) {
     printf("[-] Error: Cannot switch to passive mode.\n");
     return ERROR;
   }
-  printf("[+] Switched to passive mode\n");
+  printf("[+] Switched to passive mode with success.\n");
    
   /* Reconnecting, but this time with passive mode */
   ftp->data_fd = ftp_open_connection();
@@ -217,7 +235,6 @@ int main(int argc, char* argv[]) {
     printf("[-] Error: Cannot disconnect from the server with success.\n");
     return ERROR;
   }
-  printf("[+] Leaving program...\n");
   return TRUE;
 }
 
@@ -400,13 +417,12 @@ int url_set_ip_char(char* ip) {
 int url_set_port(int* port) {
   if(port == NULL) return ERROR;
   url->port = (port[0] * 256) + port[1];
-  printf("%d %d\n", port[0], port[1]);
+
   return TRUE;
 }
 
 int ftp_send_command(char* command) {
   int status;
-
   if((status = write(ftp->socket_fd, command, strlen(command))) <= 0) return ERROR;
 
   return status;
@@ -422,7 +438,7 @@ int ftp_read_command_response(char* command) {
   do {
     memset(command, 0, length);
     command = fgets(command, BUFSIZE, fp);
-    printf("%s", command);
+    //printf("%s", command);
   } while(!(command[0] >= '1' && command[0] <= '5') || command[3] != ' ');
 
   return TRUE;
@@ -438,16 +454,11 @@ int ftp_open_connection() {
     // Open a TCP socket
     int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 
-    if (socket_fd < 0) {
-      perror("socket()");
-      return ERROR;
-    }
+    if (socket_fd < 0) return ERROR;
 
     // Connect to the server
-    if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-      perror("connect()");
+    if (connect(socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
       return ERROR;
-    }
 
     return socket_fd;
 }
@@ -461,10 +472,9 @@ int ftp_authenticate() {
   sprintf(user_command, "USER %s\r\n", url->user);
 
   /* Send the command to the FTP server */
-  if((bytes_sent = ftp_send_command(user_command)) == ERROR) {
-    printf("Error: Cannot send the command %s.\n", user_command);
+  if((bytes_sent = ftp_send_command(user_command)) == ERROR)
     return ERROR;
-  }
+
 
   /* Get the response of the command sent to the FTP server */
   if((bytes_read = ftp_read_command_response(user_command)) == ERROR)
@@ -474,10 +484,9 @@ int ftp_authenticate() {
   sprintf(password_command, "PASS %s\r\n", url->password);
 
   /* Send the command to the FTP server */
-  if((bytes_sent = ftp_send_command(password_command)) == ERROR) {
-    printf("Error: Cannot send the command %s.\n", password_command);
+  if((bytes_sent = ftp_send_command(password_command)) == ERROR)
     return ERROR;
-  }
+
 
   /* Get the response of the command sent to the FTP server */
   if((bytes_read = ftp_read_command_response(password_command)) == ERROR)
@@ -494,11 +503,9 @@ int ftp_change_directory() {
   sprintf(cwd_command, "CWD %s\r\n", url->path);
 
   /* Send the command to the FTP server */
-  if((bytes_sent = ftp_send_command(cwd_command)) == ERROR) {
-    printf("Error: Cannot send the command %s.\n", cwd_command);
+  if((bytes_sent = ftp_send_command(cwd_command)) == ERROR)
     return ERROR;
-  }
-    printf("%d\n", bytes_sent);
+
   /* Get the response of the command sent to the FTP server */
   if((bytes_read = ftp_read_command_response(cwd_command)) == ERROR)
     return ERROR;
@@ -540,18 +547,13 @@ int ftp_retrieve_file() {
   sprintf(retr_command, "RETR %s\r\n", url->filename);
 
   /* Send the command to the FTP server */
-  if((bytes_sent = ftp_send_command(retr_command)) == ERROR) {
-    printf("Error: Cannot send the command %s.\n", retr_command);
+  if((bytes_sent = ftp_send_command(retr_command)) == ERROR)
     return ERROR;
-  }
 
   /* Get the response of the command sent to the FTP server */
-  if((bytes_read = ftp_read_command_response(retr_command)) == ERROR) {
-    
-     return ERROR;
-  }
-   
-  
+  if((bytes_read = ftp_read_command_response(retr_command)) == ERROR)
+    return ERROR;
+ 
   return TRUE;
 }
 
@@ -561,10 +563,9 @@ int ftp_download_file() {
   int bytes_read;
 
   /* Create new file to copy the file on the server */
-  if((fp = fopen(url->filename, "w")) == NULL) {
-    printf("Error: Cannot opening file\n");
+  if((fp = fopen(url->filename, "w")) == NULL)
     return ERROR;
-  }
+
 
   while((bytes_read = read(ftp->data_fd, buf, MAXLEN)) != 0) {
     if (bytes_read < 0) return ERROR;
@@ -576,23 +577,6 @@ int ftp_download_file() {
   return TRUE;  
 }
 
-FILE* ftp_copy_file() {
-  FILE* fp;
-  char* buffer[BUFSIZE];
-  int bytes_read, bytes_sent;
-
-  while((bytes_read = read(ftp->data_fd, buffer, MAXLEN))) {
-    if(bytes_read < 0) {
-      return NULL;
-    }
-
-    if((bytes_sent = fwrite(buffer, bytes_read, 1, fp)) < 0) {
-      return NULL;
-    }
-  }
-
-  return fp;
-}
 
 int ftp_disconnect() {
   char disc_command[BUFSIZE] = "QUIT\r\n";
