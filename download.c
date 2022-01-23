@@ -211,7 +211,7 @@ int main(int argc, char* argv[]) {
   printf("[+] The download was successful.\n");
 
   /* Cleaning all structures and disconnecting from server */
-  ftp_disconnect();
+
   int disc_response = ftp_disconnect();
   if(disc_response == ERROR) {
     printf("[-] Error: Cannot disconnect from the server with success.\n");
@@ -219,6 +219,19 @@ int main(int argc, char* argv[]) {
   }
   printf("[+] Leaving program...\n");
   return TRUE;
+}
+
+void delay(int number_of_seconds)
+{
+    // Converting time into milli_seconds
+    int milli_seconds = 1000 * number_of_seconds;
+  
+    // Storing start time
+    clock_t start_time = clock();
+  
+    // looping till required time is not achieved
+    while (clock() < start_time + milli_seconds)
+        ;
 }
 
 char* substring_char(char* string, char ch) {
@@ -393,23 +406,24 @@ int url_set_port(int* port) {
 
 int ftp_send_command(char* command) {
   int status;
+
   if((status = write(ftp->socket_fd, command, strlen(command))) <= 0) return ERROR;
-  
+
   return status;
 }
 
 int ftp_read_command_response(char* command) {
   int length = strlen(command);
+  delay(100);
   FILE* fp;
   
   if(((fp = fdopen(ftp->socket_fd, "r")) < 0)) return ERROR;
-
   /* Reset the actual command and store it with the response of the command on the server */
   do {
     memset(command, 0, length);
     command = fgets(command, BUFSIZE, fp);
     printf("%s", command);
-  } while(!(command[0] >= '1' && command[0] <= '5'));
+  } while(!(command[0] >= '1' && command[0] <= '5') || command[3] != ' ');
 
   return TRUE;
 }
@@ -507,12 +521,10 @@ int ftp_switch_passive_mode() {
     return ERROR;
 
   /* Passing the response to the buffer */
-  printf("PASV: %s\n", pasv_command);
-    printf("PORT: %d\n", url->port);
+  
   sscanf(pasv_command, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", &ip[0], &ip[1], &ip[2], &ip[3], &port[0], &port[1]);
-  //printf("Entering in Passive Mode (%d, %d, %d, %d, %d, %d).\n", ip[0], ip[1], ip[2], ip[3], port[0], port[1]);
-  /* Setting new IP and PORT into connection settings */
   memset(pasv_command, 0, sizeof(pasv_command));
+  /* Setting new IP and PORT into connection settings */
 
   url_set_ip_int(ip);
   url_set_port(port);
@@ -583,10 +595,9 @@ FILE* ftp_copy_file() {
 }
 
 int ftp_disconnect() {
-  char disc_command[BUFSIZE];
+  char disc_command[BUFSIZE] = "QUIT\r\n";
   int bytes_sent;
   
-  sprintf(disc_command, "QUIT\r\n");
   if((bytes_sent = ftp_send_command(disc_command)) == ERROR)
     return ERROR;
   
