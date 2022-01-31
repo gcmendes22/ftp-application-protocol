@@ -1,3 +1,4 @@
+#include <time.h>
 #include <stdio.h>
 #include <regex.h>
 #include <netdb.h>
@@ -11,20 +12,28 @@
 #include <netinet/in.h>
 
 
+/* Max length of buffers */
 #define BUFSIZE 2048
 #define MAXLEN 1024
+
+/* Elegible return types */
 #define TRUE 1
 #define FALSE 0
 #define ERROR -1
 
+/* REGEX for URL parsing */
+#define REGEX_AUTH "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+"; // with authentication (User and Password)
+#define REGEX_NO_AUTH "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+"; // without authentication (anonymous mode) 
+
+
 struct url_t {
-  char ip[MAXLEN];
-  char host[MAXLEN];
-  char user[MAXLEN];
-  char password[MAXLEN];
-  char path[MAXLEN];
-  char filename[MAXLEN];
-  int port;
+  char ip[MAXLEN]; // Host IP
+  char host[MAXLEN]; // Hostname
+  char user[MAXLEN]; // Username
+  char password[MAXLEN]; // Password
+  char path[MAXLEN]; // File pathname
+  char filename[MAXLEN]; // Filename
+  int port; // Communication port
 };
 
 struct ftp_t {
@@ -38,26 +47,56 @@ struct url_t* url;
 /* Variable to store FTP file descriptors */
 struct ftp_t* ftp;
 
-/* REGEX for URL parsing */
-#define REGEX_AUTH "ftp://([([A-Za-z0-9])*:([A-Za-z0-9])*@])*([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+"; // with authentication (User and Password)
-#define REGEX_NO_AUTH "ftp://([A-Za-z0-9.~-])+/([[A-Za-z0-9/~._-])+"; // without authentication (anonymous mode) 
-
 /* Auxiliar functions */
 
+// @brief Get the substring until char
+// @param string String to scan
+// @param ch Char used as flag to indicate that reaches the end
+// @return char* Substring
 char* substring_char(char* string, char ch);
 
+// @brief Verify if the URL passed in argument uses the auth mode or the anonymous mode. If the char '[' is present, then assumes as auth mode
+// @param input URL in string form
+// @return int TRUE if it is in auth mode, FALSE if anonymous mode 
 int is_auth_mode(char* input);
 
+// @brief Verify if string match with the provided regex 
+// @param regex Regex struct used
+// @param regex_expression Regular expression to match
+// @param string String to verify
+// @param length String length
+// @return int TRUE if success, ERROR if error
 int string_match_regex(regex_t* regex, char* regex_expression, char* string, int length);
 
+// @brief Set the username from URL into URL parameters struct url_t
+// @param offset_string Substring until char (offset)
+// @param string URL in string form
+// @return int TRUE if success, ERROR if error
 int set_username(char* offset_string, char* string);
 
+// @brief Set the password from URL into URL parameters struct url_t
+// @param offset_string Substring until char (offset)
+// @param string URL in string form
+// @return int TRUE if success, ERROR if error
 int set_password(char* offset_string, char* string);
 
+// @brief Set the hostname from URL into URL parameters struct url_t
+// @param offset_string Substring until char (offset)
+// @param string URL in string form
+// @return int TRUE if success, ERROR if error
 int set_hostname(char* offset_string, char* string);
 
+// @brief Set the pathname from URL into URL parameters struct url_t
+// @param offset_string Substring until char (offset)
+// @param string URL in string form
+// @return int TRUE if success, ERROR if error
 int set_pathname(char* offset_string, char* string);
 
+// @brief Copy the content of a file descriptor to new FILE already created
+// @param src_fd File descriptor of the source file
+// @param fp Destination file pointer 
+// @return int Number of read bytes if success, ERROR if error
+int copy_file(int src_fd, FILE* fp);
 
 /* URL and FTP functions */
 
@@ -155,23 +194,24 @@ int main(int argc, char* argv[]) {
   /* Parsing URL provided to URL settings parameters */
   url_parse(input);
 
-  /* Printing URL parameters */
-  url_print(url);
   
-
   /* Opening socket connection */
   ftp->socket_fd = ftp_open_connection();
   if(ftp->socket_fd == ERROR) {
     printf("[-] Error: Cannot open FTP conection.\n");
     return ERROR;
   }
-  printf("[+] Opened connection successfuly.\n");
 
   char* user = strlen(url->user) != 0 ? url->user : "anonymous";
   char* password = strlen(url->password) != 0 ? url->password : "anon";
   strcpy(url->user, user);
   strcpy(url->password, password);
   
+  /* Printing URL parameters */
+  url_print(url);
+
+  printf("[+] Opened connection successfuly.\n");
+
   /* Login into user account */
   int login_response = ftp_authenticate();
   
@@ -226,10 +266,9 @@ int main(int argc, char* argv[]) {
     printf("[-] Error: Cannot download the file.\n");
     return ERROR;
   }
-  printf("[+] The download was successful.\n");
+  printf("[+] The file was downloaded successfully.\n");
 
   /* Cleaning all structures and disconnecting from server */
-
   int disc_response = ftp_disconnect();
   if(disc_response == ERROR) {
     printf("[-] Error: Cannot disconnect from the server with success.\n");
@@ -238,8 +277,7 @@ int main(int argc, char* argv[]) {
   return TRUE;
 }
 
-void delay(int number_of_seconds)
-{
+void delay(int number_of_seconds) {
     // Converting time into milli_seconds
     int milli_seconds = 1000 * number_of_seconds;
   
@@ -308,12 +346,14 @@ int set_pathname(char* offset_string, char* string) {
   if(offset_string == NULL || string == NULL) return ERROR;
 
   char* pathname = (char*) malloc(strlen(string));
-  int path_begin = 1;
+  int path_begin_flag = TRUE;
   while (strchr(string, '/')) {
+    // get the string until '/'
     offset_string = substring_char(string, '/');
 
-    if (path_begin) {
-      path_begin = 0;
+    // verify if it is the first '/'
+    if (path_begin_flag) {
+      path_begin_flag = FALSE;
       strcpy(pathname, offset_string);
     } else strcat(pathname, offset_string);
 
@@ -321,6 +361,19 @@ int set_pathname(char* offset_string, char* string) {
   }
   strcpy(url->path, pathname);
   return TRUE;
+}
+
+int copy_file(int src_fd, FILE* dest_fp) {
+  if(src_fd < 0 || dest_fp == NULL) return ERROR;
+  int bytes_read;
+  char buf[MAXLEN];
+
+  while((bytes_read = read(src_fd, buf, MAXLEN)) != 0) {
+    if (bytes_read < 0) return ERROR;
+    if((bytes_read = fwrite(buf, bytes_read, 1, dest_fp)) < 0) return ERROR;
+  }
+
+  return bytes_read;
 }
 
 int url_init(struct url_t* url) {
@@ -340,7 +393,6 @@ int url_init(struct url_t* url) {
 int url_parse(char* input) {
   char* aux_url_string, *offset_string, *active_expression;
   regex_t* regex;
-  int user_pass_mode;
 
   offset_string = (char*) malloc(strlen(input));
   aux_url_string = (char*) malloc(strlen(input));
@@ -430,15 +482,15 @@ int ftp_send_command(char* command) {
 
 int ftp_read_command_response(char* command) {
   int length = strlen(command);
-  delay(100);
+  delay(100); // Responses from server are too fast
   FILE* fp;
   
   if(((fp = fdopen(ftp->socket_fd, "r")) < 0)) return ERROR;
+
   /* Reset the actual command and store it with the response of the command on the server */
   do {
     memset(command, 0, length);
     command = fgets(command, BUFSIZE, fp);
-    //printf("%s", command);
   } while(!(command[0] >= '1' && command[0] <= '5') || command[3] != ' ');
 
   return TRUE;
@@ -475,7 +527,6 @@ int ftp_authenticate() {
   if((bytes_sent = ftp_send_command(user_command)) == ERROR)
     return ERROR;
 
-
   /* Get the response of the command sent to the FTP server */
   if((bytes_read = ftp_read_command_response(user_command)) == ERROR)
     return FALSE;
@@ -486,7 +537,6 @@ int ftp_authenticate() {
   /* Send the command to the FTP server */
   if((bytes_sent = ftp_send_command(password_command)) == ERROR)
     return ERROR;
-
 
   /* Get the response of the command sent to the FTP server */
   if((bytes_read = ftp_read_command_response(password_command)) == ERROR)
@@ -528,7 +578,6 @@ int ftp_switch_passive_mode() {
     return ERROR;
 
   /* Passing the response to the buffer */
-  
   sscanf(pasv_command, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)", &ip[0], &ip[1], &ip[2], &ip[3], &port[0], &port[1]);
   memset(pasv_command, 0, sizeof(pasv_command));
   /* Setting new IP and PORT into connection settings */
@@ -559,24 +608,19 @@ int ftp_retrieve_file() {
 
 int ftp_download_file() {
   FILE* fp;
-  char buf[MAXLEN];
   int bytes_read;
 
   /* Create new file to copy the file on the server */
   if((fp = fopen(url->filename, "w")) == NULL)
     return ERROR;
 
-
-  while((bytes_read = read(ftp->data_fd, buf, MAXLEN)) != 0) {
-    if (bytes_read < 0) return ERROR;
-    if((bytes_read = fwrite(buf, bytes_read, 1, fp)) < 0) return ERROR;
-  }
+  /* Copy the retrieved file to new file */
+  if((bytes_read = copy_file(ftp->data_fd, fp)) == ERROR) return ERROR;
 
   fclose(fp);
 
   return TRUE;  
 }
-
 
 int ftp_disconnect() {
   char disc_command[BUFSIZE] = "QUIT\r\n";
